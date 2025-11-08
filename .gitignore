@@ -1,0 +1,6 @@
+__pycache__/
+.venv/
+.vscode/
+.env
+generated/
+modules\__pycache__/
