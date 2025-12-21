@@ -1,6 +1,7 @@
 # modules/blog_agent/blog_builder.py
 
 import os
+import uuid
 from modules.utils import print_header, ensure_dir
 from modules.text_generator import plan_blog_outline
 from modules.blog_agent.retriever_hybrid import find_and_download_image
@@ -23,8 +24,11 @@ def _insert_after_paragraphs(content: str, insert_md: str, after_paragraph: int)
 
 def build_blog_from_topic(topic: str):
     """
-    Full RAG-enhanced blog pipeline with a self-diagnosing, "Query Cascade" for image retrieval.
+    Full RAG-enhanced blog pipeline with UNIQUE filenames.
     """
+    # Create unique run ID
+    run_id = uuid.uuid4().hex[:8]
+    
     print_header("Planning Blog Structure")
     plan_dict = plan_blog_outline(topic)
 
@@ -32,11 +36,13 @@ def build_blog_from_topic(topic: str):
     raw_sections = write_sections(plan_dict, topic)
 
     print_header("Finding Cover Image with RAG")
+    # Unique cover path
+    cover_filename = f"generated/blogs/assets/cover_{run_id}.png"
     cover_path = find_and_download_image(
         topic=topic,
         keywords="technology abstract cover",
         vtype="image",
-        output_path="generated/blogs/assets/cover.png"
+        output_path=cover_filename
     )
 
     print_header("Enhancing Sections with RAG Visuals")
@@ -52,10 +58,11 @@ def build_blog_from_topic(topic: str):
             vtype = v["type"]
             after = v["after_paragraph"]
             
-            stem = f"sec{s_idx}_vis{v_idx}_{keywords.replace(' ', '_')}.png"
+            # Unique filename for section images
+            clean_keywords = keywords.replace(' ', '_')[:20] # Keep it short
+            stem = f"sec{s_idx}_vis{v_idx}_{clean_keywords}_{run_id}.png"
             out_path = os.path.join("generated/blogs/assets", stem)
             
-            # Use the new, more robust retriever which handles the query cascade internally
             img_path = find_and_download_image(
                 topic=topic,
                 keywords=keywords,
@@ -74,6 +81,7 @@ def build_blog_from_topic(topic: str):
         sections_with_md.append((heading, enriched))
 
     print_header("Assembling DOCX Blog")
-    docx_path = assemble_docx(plan_dict, sections_with_md, cover_path, topic)
+    # Pass the run_id to assembler
+    docx_path = assemble_docx(plan_dict, sections_with_md, cover_path, topic, run_id=run_id)
 
     return docx_path, cover_path, "generated/blogs/assets"

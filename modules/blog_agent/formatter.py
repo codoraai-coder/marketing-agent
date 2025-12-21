@@ -123,15 +123,22 @@ def set_default_font(document):
     except Exception as e:
         print(f"⚠️  Could not set default font. Using document defaults. Error: {e}")
 
-def assemble_docx(plan: dict, sections_with_md: list[tuple[str,str]], cover_path: str|None, topic: str) -> str:
+def assemble_docx(plan: dict, sections_with_md: list[tuple[str,str]], cover_path: str|None, topic: str, run_id: str = None) -> str:
     """
-    Assemble the final blog post as a .docx file.
+    Assemble the final blog post as a .docx file with a UNIQUE filename.
     """
     title = plan.get("title", f"Understanding {topic}")
     out_dir = "generated/blogs"
     assets_dir = os.path.join(out_dir, "assets")
     ensure_dir(os.path.join(assets_dir, "x"))
-    docx_path = os.path.join(out_dir, "blog.docx")
+    
+    # Generate unique filename
+    if run_id:
+        docx_filename = f"blog_{run_id}.docx"
+    else:
+        docx_filename = "blog.docx"
+        
+    docx_path = os.path.join(out_dir, docx_filename)
 
     document = Document()
     set_default_font(document)
@@ -165,7 +172,9 @@ def assemble_docx(plan: dict, sections_with_md: list[tuple[str,str]], cover_path
             match = img_regex.search(line)
             if match:
                 img_desc, img_rel_path = match.groups()
+                # Fix path resolution for relative paths
                 img_full_path = os.path.join(out_dir, img_rel_path.replace("/", os.sep))
+                
                 if os.path.exists(img_full_path):
                     try:
                         document.add_picture(img_full_path, width=Inches(5.5))
