@@ -2,12 +2,11 @@ import os
 import base64
 import requests
 from .utils import get_env, ensure_dir
-
+from typing import Optional
 # Load API key
 STABILITY_API_KEY = get_env("STABILITY_API_KEY")
 
-
-def generate_image(prompt: str, output_path: str, mode: str = "motivational") -> str | None:
+def generate_image(prompt: str, output_path: str, mode: str = "motivational") -> Optional[str]:
     """
     Generate an image from text using Stability AI API.
     Falls back automatically between v1 and v2beta endpoints for reliability.

@@ -3,4 +3,6 @@ __pycache__/
 .vscode/
 .env
 generated/
-modules\__pycache__/
+modules\
+__pycache__/
+venv/
