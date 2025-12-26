@@ -9,7 +9,7 @@ from typing import Optional
 GEMINI_API_KEY = get_env("GEMINI_API_KEY")
 
 # The specific model you requested
-MODEL_NAME = "gemini-2.5-flash-image"
+MODEL_NAME = "image-generation-001"
 
 def generate_image(prompt: str, output_path: str, mode: str = "motivational") -> Optional[str]:
     """
