@@ -1,79 +1,80 @@
 import os
-import requests
-import base64
-from .utils import get_env, ensure_dir
+import vertexai
+from vertexai.preview.vision import ImageGenerationModel
+from .utils import ensure_dir, get_env
 from typing import Optional
 
-GEMINI_API_KEY = get_env("GEMINI_API_KEY")
+# --- CONFIGURATION ---
+# We assume the credentials.json file is in the root directory
+CREDENTIALS_PATH = "credentials.json"
+PROJECT_ID = get_env("GOOGLE_CLOUD_PROJECT_ID") # You'll need to add this to .env, or hardcode it
+LOCATION = "us-central1" # Imagen is most stable in us-central1
 
 def generate_image(prompt: str, output_path: str, mode: str = "motivational") -> Optional[str]:
     """
-    Robust Google Image Generator.
-    Tries 'Imagen 3' first. If unavailable, falls back to 'Imagen 2'.
+    Generates an image using Google Vertex AI (Imagen 3).
+    Requires 'credentials.json' and 'google-cloud-aiplatform'.
     """
-    if not GEMINI_API_KEY:
-        print("❌ GEMINI_API_KEY missing.")
+    
+    # 1. Setup Auth
+    if not os.path.exists(CREDENTIALS_PATH):
+        print(f"❌ Missing Credentials: Could not find '{CREDENTIALS_PATH}'")
         return None
 
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = CREDENTIALS_PATH
+    
     ensure_dir(output_path)
     
-    # Enhancing the prompt for better results
-    full_prompt = f"{prompt}. Photorealistic, 8k, cinematic lighting."
-    if mode == "motivational":
-        full_prompt += " Minimalist, inspiring, no text, soft focus."
+    # 2. Extract Project ID from JSON if not in env
+    # This is a helper so you don't strictly need to edit .env
+    project_id = PROJECT_ID
+    if not project_id:
+        import json
+        try:
+            with open(CREDENTIALS_PATH) as f:
+                creds = json.load(f)
+                project_id = creds.get("project_id")
+        except Exception:
+            print("❌ Could not read project_id from credentials.json")
+            return None
 
-    # 1. Try Imagen 3 (Newest, Best Quality)
-    print(f"🎨 Generating image... trying 'imagen-3.0-generate-001'...")
-    if _try_generate_via_predict(full_prompt, output_path, "imagen-3.0-generate-001"):
-        return output_path
-
-    # 2. Fallback to Imagen 2 (Standard Availability)
-    print(f"⚠️ Imagen 3 not found. Falling back to 'image-generation-001'...")
-    if _try_generate_via_predict(full_prompt, output_path, "image-generation-001"):
-        return output_path
-
-    print("❌ All Google Image models failed. Check your API Key permissions.")
-    return None
-
-def _try_generate_via_predict(prompt: str, output_path: str, model_id: str) -> bool:
-    """
-    Helper to call the correct 'predict' endpoint for image models.
-    """
-    # CRITICAL: Image models use ':predict', NOT ':generateContent'
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:predict?key={GEMINI_API_KEY}"
-    
-    payload = {
-        "instances": [
-            {
-                "prompt": prompt
-            }
-        ],
-        "parameters": {
-            "sampleCount": 1,
-            "aspectRatio": "1:1"
-        }
-    }
+    print(f"🎨 Initializing Vertex AI (Project: {project_id})...")
     
     try:
-        response = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=55)
+        vertexai.init(project=project_id, location=LOCATION)
         
-        if response.status_code == 200:
-            data = response.json()
-            if "predictions" in data and data["predictions"]:
-                # Success! Decode and save.
-                b64_data = data["predictions"][0]["bytesBase64Encoded"]
-                with open(output_path, "wb") as f:
-                    f.write(base64.b64decode(b64_data))
-                print(f"✅ Image generated successfully ({model_id}) → {output_path}")
-                return True
-            else:
-                print(f"⚠️ {model_id} returned 200 but no image data.")
-        elif response.status_code == 404:
-            print(f"⚠️ Model {model_id} not available (404).")
-        else:
-            print(f"❌ {model_id} Error {response.status_code}: {response.text[:200]}")
+        # 3. Load Model (Imagen 3.0)
+        # Options: 'imagen-3.0-generate-001' or 'imagegeneration@006' (Imagen 2)
+        model = ImageGenerationModel.from_pretrained("imagen-3.0-generate-001")
+        
+        # 4. Enhance Prompt
+        final_prompt = f"{prompt}, photorealistic, 8k, cinematic lighting"
+        if mode == "motivational":
+            final_prompt += ", minimalist, inspiring, soft focus, no text"
+            
+        print(f"🚀 Generating with Imagen 3.0: '{final_prompt[:50]}...'")
+        
+        # 5. Generate
+        images = model.generate_images(
+            prompt=final_prompt,
+            number_of_images=1,
+            language="en",
+            aspect_ratio="1:1",
+            safety_filter_level="block_some",
+            person_generation="allow_adult"
+        )
+        
+        if images:
+            # Save the first image
+            images[0].save(location=output_path, include_generation_parameters=False)
+            print(f"✅ Image saved to {output_path}")
+            return output_path
             
     except Exception as e:
-        print(f"❌ Exception calling {model_id}: {e}")
-        
-    return False
+        print(f"❌ Vertex AI Error: {e}")
+        if "403" in str(e):
+            print("💡 TIP: Ensure 'Vertex AI API' is enabled in Cloud Console.")
+        if "404" in str(e):
+            print("💡 TIP: Check if 'us-central1' supports Imagen 3 for your project.")
+
+    return None
