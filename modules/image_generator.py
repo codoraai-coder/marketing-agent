@@ -1,7 +1,7 @@
 # modules/image_generator.py
 
 from modules.text_generator import _gemini_call
-from modules.stability_image import generate_image # Make sure you have this import if needed elsewhere
+from modules.google_image import generate_image # Make sure you have this import if needed elsewhere
 
 _VALID_MOODS = {"calm", "hopeful", "powerful", "creative", "elegant", "intense"}
 
