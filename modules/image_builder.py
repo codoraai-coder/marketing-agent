@@ -7,7 +7,7 @@ from modules.image_generator import (
     generate_dynamic_background_prompt,
     analyze_design_mood,
 )
-from modules.stability_image import generate_image
+from modules.google_image import generate_image
 from modules.typography_engine import render_quote_on_image
 from modules.utils import print_header
 
