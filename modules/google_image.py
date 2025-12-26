@@ -1,80 +1,108 @@
 import os
-import vertexai
-from vertexai.preview.vision import ImageGenerationModel
-from .utils import ensure_dir, get_env
+import json
+import requests
+import base64
 from typing import Optional
+from google.oauth2 import service_account
+from google.auth.transport.requests import Request as GoogleAuthRequest
+from .utils import ensure_dir, get_env
 
 # --- CONFIGURATION ---
-# We assume the credentials.json file is in the root directory
 CREDENTIALS_PATH = "credentials.json"
-PROJECT_ID = get_env("GOOGLE_CLOUD_PROJECT_ID") # You'll need to add this to .env, or hardcode it
-LOCATION = "us-central1" # Imagen is most stable in us-central1
+LOCATION = "us-central1"
+# We target Imagen 3.0 directly via the API
+MODEL_ID = "imagen-3.0-generate-001" 
+
+def get_access_token(creds_path):
+    """
+    Manually gets a Google Cloud Access Token using the JSON key.
+    This avoids using the heavy Vertex AI SDK and prevents import errors.
+    """
+    try:
+        # Load credentials directly from file
+        creds = service_account.Credentials.from_service_account_file(
+            creds_path,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"]
+        )
+        # Refresh to get the actual token string
+        creds.refresh(GoogleAuthRequest())
+        return creds.token, creds.project_id
+    except Exception as e:
+        print(f"❌ Auth Error: {e}")
+        return None, None
 
 def generate_image(prompt: str, output_path: str, mode: str = "motivational") -> Optional[str]:
     """
-    Generates an image using Google Vertex AI (Imagen 3).
-    Requires 'credentials.json' and 'google-cloud-aiplatform'.
+    Generates an image using Google Vertex AI via RAW REST API.
+    CRITICAL FIX: Bypasses 'vertexai' library imports to prevent startup crashes.
     """
-    
-    # 1. Setup Auth
     if not os.path.exists(CREDENTIALS_PATH):
-        print(f"❌ Missing Credentials: Could not find '{CREDENTIALS_PATH}'")
+        print(f"❌ Missing Credentials: {CREDENTIALS_PATH} not found.")
         return None
 
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = CREDENTIALS_PATH
-    
     ensure_dir(output_path)
-    
-    # 2. Extract Project ID from JSON if not in env
-    # This is a helper so you don't strictly need to edit .env
-    project_id = PROJECT_ID
-    if not project_id:
-        import json
-        try:
-            with open(CREDENTIALS_PATH) as f:
-                creds = json.load(f)
-                project_id = creds.get("project_id")
-        except Exception:
-            print("❌ Could not read project_id from credentials.json")
-            return None
 
-    print(f"🎨 Initializing Vertex AI (Project: {project_id})...")
+    # 1. Authenticate (No Vertex SDK used)
+    print("🔑 Authenticating with credentials.json...")
+    token, project_id = get_access_token(CREDENTIALS_PATH)
+    if not token:
+        print("❌ Failed to generate auth token.")
+        return None
+
+    # 2. Prepare Endpoint URL
+    # Direct access to the prediction endpoint
+    api_endpoint = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{LOCATION}/publishers/google/models/{MODEL_ID}:predict"
+
+    # 3. Enhance Prompt
+    final_prompt = f"{prompt}, photorealistic, 8k, cinematic lighting"
+    if mode == "motivational":
+        final_prompt += ", minimalist, inspiring, soft focus, no text"
+
+    # 4. Construct Payload (Raw JSON)
+    payload = {
+        "instances": [
+            {
+                "prompt": final_prompt
+            }
+        ],
+        "parameters": {
+            "sampleCount": 1,
+            "aspectRatio": "1:1"
+        }
+    }
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json; charset=utf-8"
+    }
+
+    print(f"🎨 Sending request to Vertex AI ({MODEL_ID})...")
     
     try:
-        vertexai.init(project=project_id, location=LOCATION)
+        response = requests.post(api_endpoint, headers=headers, json=payload, timeout=60)
         
-        # 3. Load Model (Imagen 3.0)
-        # Options: 'imagen-3.0-generate-001' or 'imagegeneration@006' (Imagen 2)
-        model = ImageGenerationModel.from_pretrained("imagen-3.0-generate-001")
-        
-        # 4. Enhance Prompt
-        final_prompt = f"{prompt}, photorealistic, 8k, cinematic lighting"
-        if mode == "motivational":
-            final_prompt += ", minimalist, inspiring, soft focus, no text"
+        if response.status_code == 200:
+            response_json = response.json()
+            predictions = response_json.get("predictions", [])
             
-        print(f"🚀 Generating with Imagen 3.0: '{final_prompt[:50]}...'")
-        
-        # 5. Generate
-        images = model.generate_images(
-            prompt=final_prompt,
-            number_of_images=1,
-            language="en",
-            aspect_ratio="1:1",
-            safety_filter_level="block_some",
-            person_generation="allow_adult"
-        )
-        
-        if images:
-            # Save the first image
-            images[0].save(location=output_path, include_generation_parameters=False)
-            print(f"✅ Image saved to {output_path}")
-            return output_path
-            
+            if predictions:
+                # Vertex AI returns Base64 encoded string
+                b64_data = predictions[0]["bytesBase64Encoded"]
+                with open(output_path, "wb") as f:
+                    f.write(base64.b64decode(b64_data))
+                print(f"✅ Image generated successfully → {output_path}")
+                return output_path
+            else:
+                print(f"⚠️ API returned 200 but no image data: {response_json}")
+                
+        else:
+            print(f"❌ Vertex API Error {response.status_code}: {response.text}")
+            if response.status_code == 404:
+                print("💡 DEBUG: Check if 'us-central1' is the correct region for your project.")
+            if response.status_code == 403:
+                print("💡 DEBUG: Ensure 'Vertex AI API' is enabled in Cloud Console.")
+
     except Exception as e:
-        print(f"❌ Vertex AI Error: {e}")
-        if "403" in str(e):
-            print("💡 TIP: Ensure 'Vertex AI API' is enabled in Cloud Console.")
-        if "404" in str(e):
-            print("💡 TIP: Check if 'us-central1' supports Imagen 3 for your project.")
+        print(f"❌ Connection failed: {e}")
 
     return None
