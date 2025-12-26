@@ -1,82 +1,79 @@
 import os
 import requests
 import base64
-import json
 from .utils import get_env, ensure_dir
 from typing import Optional
 
-# Reuse the existing Gemini Key
 GEMINI_API_KEY = get_env("GEMINI_API_KEY")
-
-# The specific model you requested
-MODEL_NAME = "image-generation-001"
 
 def generate_image(prompt: str, output_path: str, mode: str = "motivational") -> Optional[str]:
     """
-    Generates an image using the specific 'gemini-2.5-flash-image' model.
+    Robust Google Image Generator.
+    Tries 'Imagen 3' first. If unavailable, falls back to 'Imagen 2'.
     """
     if not GEMINI_API_KEY:
-        print("❌ GEMINI_API_KEY missing in .env")
+        print("❌ GEMINI_API_KEY missing.")
         return None
 
     ensure_dir(output_path)
-
-    # 1. Prepare Prompt
-    # Gemini models often perform better with a clear instruction wrapper
-    enhanced_prompt = f"Generate a photorealistic image: {prompt}"
+    
+    # Enhancing the prompt for better results
+    full_prompt = f"{prompt}. Photorealistic, 8k, cinematic lighting."
     if mode == "motivational":
-        enhanced_prompt += ". Style: Cinematic, inspiring, minimalist, no text."
-    
-    print(f"🍌 Generating image with {MODEL_NAME}...")
-    
-    # 2. API Endpoint
-    # Using the standard Gemini :generateContent method
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
+        full_prompt += " Minimalist, inspiring, no text, soft focus."
+
+    # 1. Try Imagen 3 (Newest, Best Quality)
+    print(f"🎨 Generating image... trying 'imagen-3.0-generate-001'...")
+    if _try_generate_via_predict(full_prompt, output_path, "imagen-3.0-generate-001"):
+        return output_path
+
+    # 2. Fallback to Imagen 2 (Standard Availability)
+    print(f"⚠️ Imagen 3 not found. Falling back to 'image-generation-001'...")
+    if _try_generate_via_predict(full_prompt, output_path, "image-generation-001"):
+        return output_path
+
+    print("❌ All Google Image models failed. Check your API Key permissions.")
+    return None
+
+def _try_generate_via_predict(prompt: str, output_path: str, model_id: str) -> bool:
+    """
+    Helper to call the correct 'predict' endpoint for image models.
+    """
+    # CRITICAL: Image models use ':predict', NOT ':generateContent'
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:predict?key={GEMINI_API_KEY}"
     
     payload = {
-        "contents": [{
-            "parts": [{"text": enhanced_prompt}]
-        }],
-        "generationConfig": {
-            "responseMimeType": "image/png"  # Requesting image output explicitly
+        "instances": [
+            {
+                "prompt": prompt
+            }
+        ],
+        "parameters": {
+            "sampleCount": 1,
+            "aspectRatio": "1:1"
         }
     }
-
+    
     try:
-        response = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=60)
+        response = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=55)
         
-        # 3. Handle Response
         if response.status_code == 200:
             data = response.json()
-            
-            # Check for inline image data (standard Gemini image output format)
-            try:
-                candidates = data.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    for part in parts:
-                        if "inline_data" in part:
-                            # Found the image!
-                            b64_data = part["inline_data"]["data"]
-                            with open(output_path, "wb") as f:
-                                f.write(base64.b64decode(b64_data))
-                            print(f"✅ Image generated successfully → {output_path}")
-                            return output_path
-                        
-                print(f"⚠️ API returned 200 but no inline_data found. Response: {json.dumps(data)[:200]}...")
-
-            except Exception as parse_error:
-                print(f"❌ Error parsing success response: {parse_error}")
-                print(f"Full Response: {data}")
+            if "predictions" in data and data["predictions"]:
+                # Success! Decode and save.
+                b64_data = data["predictions"][0]["bytesBase64Encoded"]
+                with open(output_path, "wb") as f:
+                    f.write(base64.b64decode(b64_data))
+                print(f"✅ Image generated successfully ({model_id}) → {output_path}")
+                return True
+            else:
+                print(f"⚠️ {model_id} returned 200 but no image data.")
+        elif response.status_code == 404:
+            print(f"⚠️ Model {model_id} not available (404).")
         else:
-            print(f"❌ API Error {response.status_code}: {response.text}")
+            print(f"❌ {model_id} Error {response.status_code}: {response.text[:200]}")
             
-            # Help debug 404s specifically
-            if response.status_code == 404:
-                print(f"💡 DEBUG: The model '{MODEL_NAME}' was not found.")
-                print("   Run 'curl https://generativelanguage.googleapis.com/v1beta/models?key=YOUR_KEY' to list available models.")
-
     except Exception as e:
-        print(f"❌ Connection failed: {e}")
-    
-    return None
+        print(f"❌ Exception calling {model_id}: {e}")
+        
+    return False
