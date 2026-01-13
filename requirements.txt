@@ -19,3 +19,5 @@ requests
 pillow
 python-docx
 boto3
+
+google-auth

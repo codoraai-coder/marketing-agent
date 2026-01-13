@@ -6,7 +6,7 @@ from .utils import ensure_dir, image_luminance
 # --- Define Project Root to find assets/logo.jpg ---
 # This makes the path robust, finding D:\Marketing Agent\assets\logo.jpg
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-LOGO_PATH = os.path.join(PROJECT_ROOT, "assests", "logo.jpg")
+LOGO_PATH = os.path.join(PROJECT_ROOT, "assets", "logo.jpg")
 
 # Font paths
 FONT_PATHS = {
@@ -19,31 +19,31 @@ FONT_PATHS = {
 # Visual presets
 MOOD_STYLES = {
     "calm": {
-        "font_family": "serif", "color": (220, 230, 255), "base_size": 52,
+        "font_family": "serif", "color": (220, 230, 255), "base_size": 72,
         "italic": True, "bold": False, "y_offset": 0.15,
     },
     "hopeful": {
-        "font_family": "sans", "color": (255, 235, 180), "base_size": 64,
+        "font_family": "sans", "color": (255, 235, 180), "base_size": 84,
         "italic": False, "bold": True, "y_offset": 0.0,
     },
     "powerful": {
-        "font_family": "display", "color": (255, 255, 255), "base_size": 72,
+        "font_family": "display", "color": (255, 255, 255), "base_size": 96,
         "italic": False, "bold": True, "y_offset": 0.0,
     },
     "creative": {
-        "font_family": "hand", "color": (255, 240, 230), "base_size": 58,
+        "font_family": "hand", "color": (255, 240, 230), "base_size": 78,
         "italic": True, "bold": False, "y_offset": -0.1,
     },
     "elegant": {
-        "font_family": "serif", "color": (255, 250, 240), "base_size": 60,
+        "font_family": "serif", "color": (255, 250, 240), "base_size": 80,
         "italic": True, "bold": False, "y_offset": 0.1,
     },
     "intense": {
-        "font_family": "display", "color": (255, 200, 180), "base_size": 70,
+        "font_family": "display", "color": (255, 200, 180), "base_size": 90,
         "italic": False, "bold": True, "y_offset": -0.1,
     },
     "neutral": {
-        "font_family": "sans", "color": (255, 255, 255), "base_size": 58,
+        "font_family": "sans", "color": (255, 255, 255), "base_size": 78,
         "italic": False, "bold": False, "y_offset": 0.0,
     },
 }
@@ -87,9 +87,9 @@ def render_quote_on_image(background_path: str, quote_text: str, mood: str, outp
     draw = ImageDraw.Draw(img)
 
     # --- 1. Render Quote Text ---
-    font_size = int(style["base_size"] * (0.85 + randint(-10, 10) / 100))
+    font_size = int(style["base_size"] * (1.10 + randint(-5, 5) / 100))  # Increased sizing for larger quote text
     font = _load_font(style["font_family"], font_size)
-    max_chars = max(24, int(width / (font_size * 0.55)))
+    max_chars = max(20, int(width / (font_size * 0.60)))  # Better text wrapping for larger fonts
     wrapped = "\n".join(wrap(quote_text, width=max_chars))
     bbox = draw.multiline_textbbox((0, 0), wrapped, font=font, spacing=8)
     text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
@@ -109,12 +109,14 @@ def render_quote_on_image(background_path: str, quote_text: str, mood: str, outp
     # Add Brand Text (Bottom Left)
     try:
         # === FONT SIZE FIX IS HERE ===
-        brand_font_size = max(18, int(height * 0.022)) # Increased font size
+        brand_font_size = max(20, int(height * 0.04)) # Improved sizing for better visibility
         brand_font = _load_font("sans", brand_font_size)
         text_x = padding
-        text_y = height - padding - brand_font_size
-        draw.text((text_x + 1, text_y + 1), BRAND_TEXT, font=brand_font, fill=(0, 0, 0, 150))
-        draw.text((text_x, text_y), BRAND_TEXT, font=brand_font, fill=(230, 230, 230, 200))
+        text_y = height - padding - brand_font_size - 10
+        # Stronger shadow for better contrast
+        draw.text((text_x + 3, text_y + 3), BRAND_TEXT, font=brand_font, fill=(0, 0, 0))
+        draw.text((text_x + 1, text_y + 1), BRAND_TEXT, font=brand_font, fill=(0, 0, 0))
+        draw.text((text_x, text_y), BRAND_TEXT, font=brand_font, fill=(255, 255, 255))
     except Exception as e:
         print(f"⚠️  Could not render brand text: {e}")
 
@@ -133,7 +135,7 @@ def render_quote_on_image(background_path: str, quote_text: str, mood: str, outp
             print(f"⚠️  Could not paste logo: {e}")
     else:
         # === PATH FIX IS HERE ===
-        print(f"⚠️  Logo not found at {LOGO_PATH}. Skipping logo branding.")
+        print(f"⚠️  Logo not found at {LOGO_PATH}. Skipping logo branding. Ensure assets folder exists.")
     
     img.convert("RGB").save(output_path, "PNG")
     print(f"✅ Styled typography and branding applied ({mood}). Saved: {output_path}")

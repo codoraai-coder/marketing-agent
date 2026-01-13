@@ -25,14 +25,13 @@ def main():
 
         caption = generate_caption_for_platform(platform, data["topic"], data["tone"])
         hashtags = generate_platform_hashtags(platform, data["topic"], caption)
-
         print_header("FINAL POST")
         print(f"Platform: {platform}")
         print("\nCaption:\n" + caption)
         print("\nHashtags:\n" + " ".join(hashtags))
         if image_path: print(f"\nImage: {image_path}")
-        print("\n✅ Done.")
-        
+        print("\n✅  Done.")
+
     elif mode == "2":
         topic = ""
         while not topic:
@@ -46,7 +45,7 @@ def main():
         print(f"Word Document: {docx_path}")
         if cover_path: print(f"Cover Image: {cover_path}")
         print(f"Assets Folder: {assets_dir}")
-        print("\n✅ Blog ready.")
+        print("\n✅  Blog ready.")
     else:
         print("Invalid option selected. Please run again and choose '1' or '2'.")
 
