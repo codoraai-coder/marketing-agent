@@ -87,7 +87,7 @@ def render_quote_on_image(background_path: str, quote_text: str, mood: str, outp
     draw = ImageDraw.Draw(img)
 
     # --- 1. Render Quote Text ---
-    font_size = int(style["base_size"] * (1.10 + randint(-5, 5) / 100))  # Increased sizing for larger quote text
+    font_size = int(style["base_size"] * (1.50 + randint(-5, 5) / 100))  # Increased sizing for larger quote text
     font = _load_font(style["font_family"], font_size)
     max_chars = max(20, int(width / (font_size * 0.60)))  # Better text wrapping for larger fonts
     wrapped = "\n".join(wrap(quote_text, width=max_chars))
