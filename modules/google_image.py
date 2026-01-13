@@ -57,6 +57,96 @@ def generate_image_with_stability(prompt: str, output_path: str) -> Optional[str
     return None
 
 
+def generate_image_with_text(
+    prompt: str,
+    quote_text: str,
+    brand_text: str,
+    output_path: str,
+    mode: str = "motivational",
+) -> Optional[str]:
+    """
+    Generate image with quote text embedded using Gemini Image API.
+    """
+
+    if not GEMINI_API_KEY:
+        print("❌ GEMINI_API_KEY missing in environment.")
+        return None
+
+    ensure_dir(output_path)
+
+    # Enhanced prompt with text specifications
+    final_prompt = f"""{prompt}, photorealistic, cinematic lighting.
+    
+The image MUST include the following text elements:
+    
+    1. Main Quote (large, centered, highly readable): "{quote_text}"
+       - Use large, bold, white text with strong black outline/shadow
+       - Center the text prominently on the image
+       - Text should have maximum contrast for readability
+    
+    2. Branding (bottom-left corner, small): "{brand_text}"
+       - Small white text with shadow
+       - Positioned in bottom-left corner
+    
+    Text should be clearly legible, professional, and well-integrated into the design.
+    """
+    
+    if mode == "motivational":
+        final_prompt += "\nMinimalist, inspiring aesthetic, professional typography."
+
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {
+                        "text": final_prompt
+                    }
+                ]
+            }
+        ]
+    }
+
+    headers = {"Content-Type": "application/json"}
+    params = {"key": GEMINI_API_KEY}
+
+    print(f"🎨 Generating image with embedded text using {MODEL_ID}...")
+
+    try:
+        response = requests.post(
+            GEMINI_ENDPOINT,
+            headers=headers,
+            json=payload,
+            params=params,
+            timeout=90,
+        )
+
+        if response.status_code != 200:
+            print(f"❌ Gemini API error {response.status_code}: {response.text}")
+            return None
+
+        data = response.json()
+        candidates = data.get("candidates", [])
+
+        if not candidates:
+            print("⚠️ Gemini returned no candidates.")
+            return None
+
+        for part in candidates[0]["content"]["parts"]:
+            if "inlineData" in part:
+                img_b64 = part["inlineData"]["data"]
+                with open(output_path, "wb") as f:
+                    f.write(base64.b64decode(img_b64))
+                print(f"✅ Image with embedded text generated → {output_path}")
+                return output_path
+
+        print("⚠️ No image data found in Gemini response.")
+        return None
+
+    except Exception as e:
+        print(f"❌ Gemini request failed: {e}")
+        return None
+
+
 def generate_image(
     prompt: str,
     output_path: str,

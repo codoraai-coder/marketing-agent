@@ -6,7 +6,7 @@ from modules.image_generator import (
     generate_dynamic_background_prompt,
     analyze_design_mood,
 )
-from modules.google_image import generate_image
+from modules.google_image import generate_image, generate_image_with_text
 from modules.typography_engine import render_quote_on_image
 from modules.utils import print_header
 
@@ -38,30 +38,21 @@ def generate_final_post_image(user_topic: str):
         quote, user_topic, mood
     )
 
-    # ✅ Corrected log (Gemini, not Vertex)
-    print_header("Creating Background with Gemini Image API")
-
-    bg_filename = f"generated/temp_bg_{run_id}.png"
-    bg_path = generate_image(
+    print_header("Creating Image with Embedded Text using Gemini")
+    
+    final_filename = f"generated/quote_{run_id}.png"
+    brand_text = "@aiwithsid | http://grwothbrothers.in"
+    
+    final_path = generate_image_with_text(
         theme_prompt,
-        bg_filename,
+        quote,
+        brand_text,
+        final_filename,
         mode="motivational",
     )
 
-    if not bg_path:
-        print("⚠️ Image generation failed; returning quote without image.")
+    if not final_path:
+        print("⚠️ Image generation with text failed; returning quote only.")
         return None, quote
-
-    print_header("Rendering Typography Overlay")
-    final_filename = f"generated/quote_{run_id}.png"
-    final_path = render_quote_on_image(
-        bg_path,
-        quote,
-        mood,
-        final_filename,
-    )
-
-    if os.path.exists(bg_path):
-        os.remove(bg_path)
 
     return final_path, quote
