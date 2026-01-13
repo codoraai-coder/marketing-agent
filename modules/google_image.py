@@ -1,108 +1,129 @@
 import os
-import json
-import requests
 import base64
+import requests
 from typing import Optional
-from google.oauth2 import service_account
-from google.auth.transport.requests import Request as GoogleAuthRequest
+
 from .utils import ensure_dir, get_env
 
 # --- CONFIGURATION ---
-CREDENTIALS_PATH = "credentials.json"
-LOCATION = "us-central1"
-# We target Imagen 3.0 directly via the API
-MODEL_ID = "imagen-3.0-generate-001" 
+GEMINI_API_KEY = get_env("GEMINI_API_KEY")
+STABILITY_API_KEY = get_env("STABILITY_API_KEY", "")  # optional fallback
 
-def get_access_token(creds_path):
+MODEL_ID = "gemini-2.5-flash-image"
+GEMINI_ENDPOINT = (
+    "https://generativelanguage.googleapis.com/v1beta/"
+    f"models/{MODEL_ID}:generateContent"
+)
+
+
+def generate_image_with_stability(prompt: str, output_path: str) -> Optional[str]:
     """
-    Manually gets a Google Cloud Access Token using the JSON key.
-    This avoids using the heavy Vertex AI SDK and prevents import errors.
+    Fallback image generation using Stability AI.
     """
+    if not STABILITY_API_KEY:
+        return None
+
     try:
-        # Load credentials directly from file
-        creds = service_account.Credentials.from_service_account_file(
-            creds_path,
-            scopes=["https://www.googleapis.com/auth/cloud-platform"]
-        )
-        # Refresh to get the actual token string
-        creds.refresh(GoogleAuthRequest())
-        return creds.token, creds.project_id
-    except Exception as e:
-        print(f"❌ Auth Error: {e}")
-        return None, None
+        url = "https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image"
 
-def generate_image(prompt: str, output_path: str, mode: str = "motivational") -> Optional[str]:
+        payload = {
+            "text_prompts": [{"text": prompt}],
+            "cfg_scale": 7,
+            "steps": 30,
+            "height": 1024,
+            "width": 1024,
+            "samples": 1,
+        }
+
+        headers = {
+            "Authorization": f"Bearer {STABILITY_API_KEY}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
+        print("🔁 Gemini failed — trying Stability AI fallback...")
+        res = requests.post(url, json=payload, headers=headers, timeout=90)
+
+        if res.status_code == 200:
+            img_b64 = res.json()["artifacts"][0]["base64"]
+            with open(output_path, "wb") as f:
+                f.write(base64.b64decode(img_b64))
+            print(f"✅ Image generated via Stability → {output_path}")
+            return output_path
+
+    except Exception as e:
+        print(f"❌ Stability fallback failed: {e}")
+
+    return None
+
+
+def generate_image(
+    prompt: str,
+    output_path: str,
+    mode: str = "motivational",
+) -> Optional[str]:
     """
-    Generates an image using Google Vertex AI via RAW REST API.
-    CRITICAL FIX: Bypasses 'vertexai' library imports to prevent startup crashes.
+    Generate image using Gemini Image API (Nano Banana).
     """
-    if not os.path.exists(CREDENTIALS_PATH):
-        print(f"❌ Missing Credentials: {CREDENTIALS_PATH} not found.")
+
+    if not GEMINI_API_KEY:
+        print("❌ GEMINI_API_KEY missing in environment.")
         return None
 
     ensure_dir(output_path)
 
-    # 1. Authenticate (No Vertex SDK used)
-    print("🔑 Authenticating with credentials.json...")
-    token, project_id = get_access_token(CREDENTIALS_PATH)
-    if not token:
-        print("❌ Failed to generate auth token.")
-        return None
-
-    # 2. Prepare Endpoint URL
-    # Direct access to the prediction endpoint
-    api_endpoint = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{LOCATION}/publishers/google/models/{MODEL_ID}:predict"
-
-    # 3. Enhance Prompt
-    final_prompt = f"{prompt}, photorealistic, 8k, cinematic lighting"
+    final_prompt = f"{prompt}, photorealistic, cinematic lighting"
     if mode == "motivational":
         final_prompt += ", minimalist, inspiring, soft focus, no text"
 
-    # 4. Construct Payload (Raw JSON)
     payload = {
-        "instances": [
+        "contents": [
             {
-                "prompt": final_prompt
+                "parts": [
+                    {
+                        "text": final_prompt
+                    }
+                ]
             }
-        ],
-        "parameters": {
-            "sampleCount": 1,
-            "aspectRatio": "1:1"
-        }
+        ]
     }
 
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json; charset=utf-8"
-    }
+    headers = {"Content-Type": "application/json"}
+    params = {"key": GEMINI_API_KEY}
 
-    print(f"🎨 Sending request to Vertex AI ({MODEL_ID})...")
-    
+    print(f"🎨 Generating image using {MODEL_ID}...")
+
     try:
-        response = requests.post(api_endpoint, headers=headers, json=payload, timeout=60)
-        
-        if response.status_code == 200:
-            response_json = response.json()
-            predictions = response_json.get("predictions", [])
-            
-            if predictions:
-                # Vertex AI returns Base64 encoded string
-                b64_data = predictions[0]["bytesBase64Encoded"]
+        response = requests.post(
+            GEMINI_ENDPOINT,
+            headers=headers,
+            json=payload,
+            params=params,
+            timeout=90,
+        )
+
+        if response.status_code != 200:
+            print(f"❌ Gemini API error {response.status_code}: {response.text}")
+            return generate_image_with_stability(prompt, output_path)
+
+        data = response.json()
+        candidates = data.get("candidates", [])
+
+        if not candidates:
+            print("⚠️ Gemini returned no candidates.")
+            return generate_image_with_stability(prompt, output_path)
+
+        for part in candidates[0]["content"]["parts"]:
+            if "inlineData" in part:
+                img_b64 = part["inlineData"]["data"]
                 with open(output_path, "wb") as f:
-                    f.write(base64.b64decode(b64_data))
-                print(f"✅ Image generated successfully → {output_path}")
+                    f.write(base64.b64decode(img_b64))
+                print(f"✅ Image generated → {output_path}")
                 return output_path
-            else:
-                print(f"⚠️ API returned 200 but no image data: {response_json}")
-                
-        else:
-            print(f"❌ Vertex API Error {response.status_code}: {response.text}")
-            if response.status_code == 404:
-                print("💡 DEBUG: Check if 'us-central1' is the correct region for your project.")
-            if response.status_code == 403:
-                print("💡 DEBUG: Ensure 'Vertex AI API' is enabled in Cloud Console.")
+
+        print("⚠️ No image data found in Gemini response.")
+        return generate_image_with_stability(prompt, output_path)
 
     except Exception as e:
-        print(f"❌ Connection failed: {e}")
-
-    return None
+        print(f"❌ Gemini request failed: {e}")
+        return generate_image_with_stability(prompt, output_path)
