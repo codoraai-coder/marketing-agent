@@ -19,31 +19,31 @@ FONT_PATHS = {
 # Visual presets
 MOOD_STYLES = {
     "calm": {
-        "font_family": "serif", "color": (220, 230, 255), "base_size": 72,
+        "font_family": "serif", "color": (255, 255, 255), "base_size": 110,
         "italic": True, "bold": False, "y_offset": 0.15,
     },
     "hopeful": {
-        "font_family": "sans", "color": (255, 235, 180), "base_size": 84,
+        "font_family": "sans", "color": (255, 255, 255), "base_size": 120,
         "italic": False, "bold": True, "y_offset": 0.0,
     },
     "powerful": {
-        "font_family": "display", "color": (255, 255, 255), "base_size": 96,
+        "font_family": "display", "color": (255, 255, 255), "base_size": 130,
         "italic": False, "bold": True, "y_offset": 0.0,
     },
     "creative": {
-        "font_family": "hand", "color": (255, 240, 230), "base_size": 78,
+        "font_family": "hand", "color": (255, 255, 255), "base_size": 115,
         "italic": True, "bold": False, "y_offset": -0.1,
     },
     "elegant": {
-        "font_family": "serif", "color": (255, 250, 240), "base_size": 80,
+        "font_family": "serif", "color": (255, 255, 255), "base_size": 115,
         "italic": True, "bold": False, "y_offset": 0.1,
     },
     "intense": {
-        "font_family": "display", "color": (255, 200, 180), "base_size": 90,
+        "font_family": "display", "color": (255, 255, 255), "base_size": 125,
         "italic": False, "bold": True, "y_offset": -0.1,
     },
     "neutral": {
-        "font_family": "sans", "color": (255, 255, 255), "base_size": 78,
+        "font_family": "sans", "color": (255, 255, 255), "base_size": 110,
         "italic": False, "bold": False, "y_offset": 0.0,
     },
 }
@@ -87,20 +87,28 @@ def render_quote_on_image(background_path: str, quote_text: str, mood: str, outp
     draw = ImageDraw.Draw(img)
 
     # --- 1. Render Quote Text ---
-    font_size = int(style["base_size"] * (1.50 + randint(-5, 5) / 100))  # Increased sizing for larger quote text
+    font_size = int(style["base_size"] * 1.20)  # Consistent large sizing
     font = _load_font(style["font_family"], font_size)
-    max_chars = max(20, int(width / (font_size * 0.60)))  # Better text wrapping for larger fonts
+    max_chars = max(15, int(width / (font_size * 0.50)))  # Tighter wrapping for larger fonts
     wrapped = "\n".join(wrap(quote_text, width=max_chars))
     bbox = draw.multiline_textbbox((0, 0), wrapped, font=font, spacing=8)
     text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
     x = (width - text_w) / 2
     y_offset = style.get("y_offset", 0.0)
     y = (height - text_h) / 2 + (y_offset * height)
-    text_color = _auto_color_for_background(img, style["color"])
-    shadow_color = (0, 0, 0) if text_color == (255, 255, 255) else (255, 255, 255)
-    for dx, dy in [(2, 2), (1, 1)]:
-        draw.multiline_text((x + dx, y + dy), wrapped, font=font, fill=shadow_color, align="center", spacing=8)
-    _apply_fake_style(draw, x, y, wrapped, font, text_color, style["bold"], style["italic"], "center", spacing=8)
+    # Force white text with strong black outline for maximum contrast
+    text_color = (255, 255, 255)
+    outline_color = (0, 0, 0)
+    
+    # Draw thick outline (8-directional)
+    outline_width = 4
+    for dx in range(-outline_width, outline_width + 1):
+        for dy in range(-outline_width, outline_width + 1):
+            if dx != 0 or dy != 0:
+                draw.multiline_text((x + dx, y + dy), wrapped, font=font, fill=outline_color, align="center", spacing=12)
+    
+    # Draw main text
+    _apply_fake_style(draw, x, y, wrapped, font, text_color, style["bold"], style["italic"], "center", spacing=12)
 
     # --- 2. Add Branding ---
     BRAND_TEXT = "@aiwithsid | http://grwothbrothers.in"
@@ -109,7 +117,7 @@ def render_quote_on_image(background_path: str, quote_text: str, mood: str, outp
     # Add Brand Text (Bottom Left)
     try:
         # === FONT SIZE FIX IS HERE ===
-        brand_font_size = max(20, int(height * 0.04)) # Improved sizing for better visibility
+        brand_font_size = max(28, int(height * 0.045)) # Larger for better visibility
         brand_font = _load_font("sans", brand_font_size)
         text_x = padding
         text_y = height - padding - brand_font_size - 10
